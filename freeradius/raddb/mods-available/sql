@@ -1,0 +1,158 @@
+
+# sql.conf -- SQL modules
+#
+# SQL认证检查流程
+#
+#   1. 从radcheck表中查找指定用户的所有属性.
+#   2. 如果找到检查属性并且匹配(NAS提交的属性),从radreply表中提取回复项到用户回复属性.
+#   3. 如果满足如下条件之一则执行组处理过程:
+#       a. 用户未能在radcheck表中找到.
+#       b. 用户在radcheck表中找到但查检属性不匹配.
+#       c. 用户在radcheck表中找到且查检属性匹配,但"read_groups"指令被设置为"yes".
+#   4. 如果为用户执行组处理,先从radusergroup表中提取用户所有属组并依照优先级进行排序,
+#      radusergroup表中的优先级字段允许检查过程可以控制组处理顺序,因此可以模拟使用文
+#      件时的顺序检查,这在有些时候是很重要的.
+#   5. 对于该用户所属的每个组,将从radgroupCheck表中提取相应的检查项,并与请求进行比较,
+#      如果匹配,则从radgrouppreply表中提取该组的应答项并应用到用户回复属性.
+#   6. 如果组检查不匹配则进入下一组检查否则结束
+#      (以上过程同使用文件认证相同)
+#   7. 最后,如果用户具有"User-Profile"属性或者默认Profile选项在sql.conf中被设置,则对
+#      用户Profile所属的组重复执行4-6步骤的组检查.
+
+
+#可用数据库: mysql, mssql, oracle, postgresql
+
+sql {
+    #子模块用执行具体的查询,需要和目标数据库类型匹配
+    #    * rlm_sql_mysql
+    #    * rlm_sql_mssql
+    #    * rlm_sql_oracle
+    #    * rlm_sql_postgresql
+    #    * rlm_sql_sqlite
+    #    * rlm_sql_null (日志查询到文件而非真正查询)
+    driver = "rlm_sql_mysql"
+
+    #特定的数据库驱动子模块需要特定的配置段如下:
+    #   sqlite {
+    #       #数据库文件路径
+    #       filename = "/tmp/freeradius.db"
+    #       #写入锁申请超时
+    #       busy_timeout = 200
+    #       #数据库文件丢失时尝试新建
+    #       bootstrap = "${modconfdir}/${..:name}/main/sqlite/schema.sql"
+    #   }
+    #   mysql {
+    #       #下面任一文件被设置时将启用TLS进行连接
+    #       tls {
+    #           ca_file = "/etc/ssl/certs/my_ca.crt"
+    #           ca_path = "/etc/ssl/certs/"
+    #           certificate_file = "/etc/ssl/certs/private/client.crt"
+    #           private_key_file = "/etc/ssl/certs/private/client.key"
+    #           cipher = "DHE-RSA-AES256-SHA:AES128-SHA"
+    #       }
+    #       #发生错误时日志一个告警事件
+    #       warnings = auto
+    #   }
+    #   postgresql {
+    #       # 发送application_name到时postgres服务器(PG 9.0及更新版本支持),默认no
+    #       send_application_name = yes
+    #   }
+    #数据库类型
+    dialect = "mysql"
+
+    
+    #数据库连接信息:
+    #   server = "mrdb01"
+    #   port = 3306
+    #   login = "admin"
+    #   password = "abc000"
+    #   radius_db = "radius"
+    $INCLUDE  ${confdir}/dbserinfo
+    
+    #数据库为 Oracle 时:
+    # radius_db = "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost) \
+    #   (PORT=1521))(CONNECT_DATA=(SID=your_sid)))"
+    
+    #数据库为 postgresql 时:
+    # radius_db = "dbname=radius host=localhost user=radius password=raddpass"
+    
+    #数据库Postgreql配置TLS的方法如下(tls{}段会被忽略)
+    # radius_db = "host=localhost port=5432 dbname=radius user=radius \
+    #   password=raddpass sslmode=verify-full sslcert=/etc/ssl/client.crt \
+    #   sslkey=/etc/ssl/client.key sslrootcert=/etc/ssl/ca.crt" 
+    
+    #记账开始和结束记录可分别放到不同的表中,开始acct_table1,结束acct_table2
+    acct_table1 = "radacct"
+    acct_table2 = "radacct"
+    
+    #认证日志表
+    postauth_table = "radpostauth"
+    
+    #检查表:
+    authcheck_table = "radcheck"
+    groupcheck_table = "radgroupcheck"
+    
+    #回复表
+    authreply_table = "radreply"
+    groupreply_table = "radgroupreply"
+    
+    #用户组表(组仅对该模块有意义)
+    usergroup_table = "radusergroup"
+    
+    #设置为"no"不强制执行组操作,除非在回复属性设置了"Fall-Through = yes",默认"yes"
+    # read_groups = yes
+    
+    #在没有明确的"Fall-Through={yes|no}"配置时该项指示对Profiles的操作:
+    #"yes"(默认)表示读取Profiles设置,"no"表示不读取
+    # read_profiles = yes
+    
+    #未检测到重复登录时清除旧的会话记录
+    delete_stale_sessions = yes
+    
+    #SQL查询写入日志文件
+    # logfile = ${logdir}/sqllog.sql
+    
+    #查询和连接超时时间
+    query_timeout = 5
+    
+    #非线程方式服务器忽略连接池POOL限制且只使用单个连接,
+    #其它SQL模块实例可使用 pool = <当前实例名称> 的方式
+    #来引用当前实例中的POOL
+    pool {
+        #指定在模块实例化期间要创建的连接数,如果服务器在实例化期间
+        #不能创建指定数量的连接,它将退出运行.
+        #设置为0以允许服务器在没有数据库可用的情况下启动。
+        # start = ${thread[pool].start_servers}
+        start = 0
+        #保持打开的最小连接数和最大连接数,一般和线路池配置对应
+        min = ${thread[pool].min_spare_servers}
+        max = ${thread[pool].max_servers}
+        #最大空闲连接数
+        spare = ${thread[pool].max_spare_servers}
+        #关闭连接之前的使用次数,0不限
+        uses = 20000
+        #连接重试延时
+        retry_delay = 15
+        #连接存活时间,0不限
+        lifetime = 7200
+        #空闲超时时间,空闲超时的连接将被关闭
+        idle_timeout = 600
+        #连接限制策略都是被强制执行的,这可能导致可用连接数小于期望值
+        #这时将会启动新的进行业务处理并记录一条警告日志
+    }
+    
+    #设置为"yes"指示服务器启动期间且仅启动期间从nas表读取客户端配置
+    # read_clients = yes
+    
+    #客户端配置表名称
+    client_table = "nas"
+    
+    #rlm_sql实例组属性
+    #该项应用于附加实例样式:
+    # group_attribute = "${.:instance}-SQL-Group"
+    #该项应用于默认实例样式:
+    group_attribute = "SQL-Group"
+    
+    #数据库查询代码定义,对应于各子模块
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

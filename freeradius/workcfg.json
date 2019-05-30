@@ -1,0 +1,22 @@
+{
+  "initdelay": 2,
+  "workstart": "./freeradiusrun.sh",
+  "workwatch": "15",
+  "workintvl": 3,
+  "firewall": {
+    "tcpportpmt": "",
+    "udpportpmt": "1812:1814",
+    "icmppermit": "yes"
+  },
+  "radius": {
+    "sqlsrv":     "yes",
+    "sqlser":     "",
+    "sqlport":    "",
+    "sqluser":    "",
+    "sqlpwd":     "",
+    "dbname":     "",
+    "lcnetpmt":   "yes",
+    "lcnetpwd":   ""
+  }
+}
+

@@ -1,0 +1,122 @@
+
+#"inner-tunnel"虚拟服务器,仅用于处理EAP-TTLS和PEAP隧道中的认证请求
+server inner-tunnel {
+
+listen {
+    ipaddr = 127.0.0.1
+    port = 18120
+    type = auth
+}
+
+authorize {
+	filter_username
+
+    # filter_inner_identity
+	chap
+	mschap
+    # unix
+    # IPASS
+	suffix
+    # ntdomain
+
+	#设置相关属性以确保请求不被代理
+	update control { &Proxy-To-Realm := LOCAL }
+    
+	eap { ok = return }
+
+	files
+	sql
+    # smbpasswd
+	# ldap
+    
+    # daily
+
+	expiration
+	logintime
+    
+	pap
+}
+
+authenticate {
+	Auth-Type PAP {
+		pap
+	}
+	Auth-Type CHAP {
+		chap
+	}
+	Auth-Type MS-CHAP {
+		mschap
+	}
+
+	mschap
+
+    # pam
+
+    #	Auth-Type LDAP {
+    #		ldap
+    #	}
+    
+	eap
+}
+
+session {
+	# radutmp
+    sql
+}
+
+post-auth {
+    # cui-inner
+    # reply_log
+
+	sql
+
+    # sql_log
+    # ldap
+
+	#Un-comment the following if you want to generate Moonshot (ABFAB) TargetedIds
+	#IMPORTANT: This requires the UUID package to be installed!
+    #	moonshot_host_tid
+    #	moonshot_realm_tid
+    #	moonshot_coi_tid
+  
+	#Instead of "use_tunneled_reply", change this "if (0)" to an "if (1)". 
+	if (0) {
+		#清除内部通道专用属性,不可被复制到外部回复
+		update reply {
+			User-Name !* ANY
+			Message-Authenticator !* ANY
+			EAP-Message !* ANY
+			Proxy-State !* ANY
+			MS-MPPE-Encryption-Types !* ANY
+			MS-MPPE-Encryption-Policy !* ANY
+			MS-MPPE-Send-Key !* ANY
+			MS-MPPE-Recv-Key !* ANY
+		}
+
+		#内部回复属性复制到外部会话状态列表
+        #后期策略将负责将外部会话状态列表复制到外部回复
+		update { &outer.session-state: += &reply: }
+	}
+
+	#"Access-Reject"包会传弟到REJECT子段进行处理
+	Post-Auth-Type REJECT {
+		sql
+		attr_filter.access_reject
+        
+		#定位失败模块到外部会话
+		update outer.session-state {
+			&Module-Failure-Message := &request:Module-Failure-Message
+		}
+	}
+}
+
+pre-proxy {
+    # files
+    # attr_filter.pre-proxy
+    # pre_proxy_log
+}
+
+post-proxy {
+	eap
+}
+}

@@ -1,0 +1,21 @@
+
+#属性必须在字典文件中定义后才能被radius使用,该文件为用户自定义
+#字典文件,服务在系统字典${prefix}/share/freeradius/dictionary读
+#取完成后读取该文件.使用编号3000-4000的属性将不会在radius包中被
+#发送(仅内部使用).
+
+#属性定义格式
+
+#ATTRIBUTE	My-Local-String		3000	string
+#ATTRIBUTE	My-Local-IPAddr		3001	ipaddr
+#ATTRIBUTE	My-Local-Integer	3002	integer
+
+
+
+
+
+
+
+
+
+

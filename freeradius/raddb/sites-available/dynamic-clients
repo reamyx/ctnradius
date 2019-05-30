@@ -1,0 +1,57 @@
+
+#定义动态客户端配置
+client dynamic {
+    #指定动态客户端的地址范围,此范围内未知客户端将进行动态配置检查
+    #如果找到做合法客户端限期缓存,每秒只能添加一个动态客户端发防止DDOS
+    #IPv4 /32 or IPv6 /128不被支持,共享密钥在此无需定义,会被忽略
+    ipaddr = 0.0.0.0/0
+
+    #指定动态客户端的虚拟服务器
+    dynamic_clients = dynamic_clients
+
+    #客户端文件目录,每文件一个IP地址,使用sql时可不配置此
+    # directory = ${confdir}/dynamicnas/
+
+    #动态客户端生存期(读入后的有效时间),生存期过后重新查找动态客户端
+    #0表示永久有效(这时删除客户端只能重启服务)
+    lifetime = 300
+}
+
+
+#动态客户端专用虚拟服务器,只含"authorize"端
+server dynamic_clients {
+    authorize {
+        #被该段处理的请求并非触发动态客户端检查的请求本身,而是虚
+        #拟的,空属性.该段仅需要更新 control 组属性相关属性,有意义
+        #的参考属性仅有(用于定义动态客户端): 
+        #   Packet-Src-IP-Address (IPv4)
+        #   Packet-Src-IP6-Address (IPv6)
+
+        #当前段可操作的属性
+        #update control {
+            #&FreeRADIUS-Client-IP-Address = "%{Packet-Src-IP-Address}"
+            #&FreeRADIUS-Client-Require-MA = no
+            #&FreeRADIUS-Client-Secret = "testing123"
+            #&FreeRADIUS-Client-Shortname = "%{Packet-Src-IP-Address}"
+            #&FreeRADIUS-Client-NAS-Type = "other"
+            #客户端定义中未指定虚拟服务器时可使用此设置
+            #&FreeRADIUS-Client-Virtual-Server = "default" }
+        
+        
+        #从指定的目录动态地查寻客户端文件
+        # dynamic_clients
+
+        #通过SQL查询客户端: (目前从数据库提取的密码不起没用,待定)
+        if ("%{sql: SELECT nasname FROM nas WHERE nasname = '%{Packet-Src-IP-Address}'}") {
+            update control {
+                &FreeRADIUS-Client-IP-Address = "%{Packet-Src-IP-Address}"
+                &FreeRADIUS-Client-Shortname = "%{%{sql: SELECT shortname FROM nas WHERE nasname = '%{Packet-Src-IP-Address}'}:-NONE}"
+                &FreeRADIUS-Client-Secret = "%{%{sql: SELECT secret FROM nas WHERE nasname = '%{Packet-Src-IP-Address}'}:-NO_SET_SECRET_X8}"
+                &FreeRADIUS-Client-NAS-Type = "%{%{sql: SELECT type FROM nas WHERE nasname = '%{Packet-Src-IP-Address}'}:-other}"
+                &FreeRADIUS-Client-Virtual-Server = "%{%{sql: SELECT server FROM nas WHERE nasname = '%{Packet-Src-IP-Address}'}:-default}"
+            }
+        }
+        #返回OK指示发出请求的客户端定义正确
+        ok
+    }
+}

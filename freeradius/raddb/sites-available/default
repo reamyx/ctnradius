@@ -1,0 +1,467 @@
+
+#默认服务器配置
+server default {
+
+#listen段定义服务器监听的端口,定义多个listen段以收发不同类型的请求
+
+#========== 认证listen ==========#
+listen {
+    #socket类型: auth(认证),acct(记账),proxy(仅定义代理包发送源socket),
+    #status(统计查询),coa(授权更改:CoA-Request和Disconnect-Request)
+    type = auth
+    
+    #注意: "type = proxy"时用于定义代理包发送的源地址,局限性如下:
+    #       a. 该类型的listen不可被用在虚拟服务器段中
+    #       b. 可能需要设置 "port = 0"
+    #       c. "clients"配置将会被忽略
+    #在代理配置的"home_server"段中指定了"src_ipaddr"时对应的代理listen
+    #会被自动创建.参考proxy.conf.
+
+    #监听地址,可使用主机名,地址或通配符*
+    # ipv4addr = *
+    # ipv6addr = *
+    # interface = eth0 仅在支持接口绑定的系统上可用
+    ipaddr = *
+    
+    #监听端口,0表示使用 /etc/services 中的端口定义"
+    port = 0
+    
+    #协议: tcp或udp(缺省),不能使用通配符*
+    # proto = udp
+    
+    #客户端配置,可引用clients.conf中的客户组(由clients而非client定义)
+    #缺省使用clients.conf中定义的全局客户端配置(由client定义)
+    # clients = per_socket_clients
+
+    #连接限制设置
+    limit {
+        #接收包速率限制,0表示不限
+        # max_pps = 0
+        
+        #TCP连接控制选项,其它协议不使用
+        max_connections = 16
+        lifetime = 0
+        idle_timeout = 30
+    }
+}
+
+#========== 记账listen ==========#
+listen {
+    type = acct
+    ipaddr = *
+    port = 0
+    # proto = udp
+    # clients = per_socket_clients
+}
+
+#========== 认证listen IPv6 ==========#
+listen {
+    type = auth
+    ipv6addr = ::
+    port = 0
+}
+
+#========== 记账listen IPv6 ==========#
+listen { 
+    type = acct
+    ipv6addr = ::
+    port = 0
+}
+
+
+
+##========== 授权配置 ==========#
+#顺序: 预处理(hints和huntgroups) > realms(模块) > "users"文件
+#此处配置方法同样适用于"inner-tunnel"虚拟服务器
+#realms模块顺序决定找到匹配realms的顺序,如果需要为远程radius设置hints,
+#需确保预处理在其它realm之前进行
+authorize {
+
+    #策略过程: 用户名合法性检查,失败时reject当前请求
+    filter_username
+
+    #策略过程: 密码嵌入0清除,如C语言字符串线束标记"\0"
+    # filter_password
+
+    #模块处理: 清除或转换请求中的异常属性
+    #配置文件: huntgroups,hints(位于mods-config/preprocess/)
+    preprocess
+
+    #是否启用生成本地客户端CUI(可记账用户标识)操作符
+    #启用时需要在clients.conf中设置operator-name
+    # operator-name
+
+    #为缺失或错误的请求修正CUI(需要clients.conf设置"add_cui = yes")
+    # cui
+
+    #日志身份验证请求
+    # auth_log
+
+    #模块处理: 如果处理的是一个CHAP请求将进行属性设置: Auth-Type := CHAP
+    chap
+
+    #模块处理: 请求中使用了"MS-CHAP-Challenge"属性时mschap模块将设置请求
+    #属性: Auth-Type := MS-CHAP ,使得服务器执行mschap认证
+    mschap
+
+    #模块处理: 摘要认证
+    #digest
+
+    #修正Wimax中6字节的Calling-Station-Id为RFC3580定义的标准格式
+    # wimax
+
+    #查找"realm/"和"@realm"以决定是否进行代理
+    # IPASS
+
+    #使用多个realm时可以设置"ignore_null = yes",否则第一个realm
+    #匹配失败时其它realm将不会再进行检查
+    suffix
+    # ntdomain
+    
+    #该模块负责EAP-MD5,EAP-TLS和EAP-Leap身份验证.同时设置请求属性列表中
+    #EAP-Type属性为包中的EAP类型.如果未准备好对用户进行身份验证,EAP模块
+    #将返回"ok"或"UPDATED".下例配置将使检查返回值为"ok"时停止"authorize"
+    #段处理,亦或# eap { updated = return }
+    eap { ok = return } 
+
+    #使用系统API执行unix密码检查,直接读取/etc/passwd可使用passwd模块
+    # unix
+
+    #模块处理: 使用"users"文件mods-config/files/authorize进行认证,
+    files
+
+    #模块处理: 使用数据库进行认证,数据库结构镜像于"users"文件
+    sql
+
+    #使用/etc/smbpasswd进行mschap认证,需要配置smbpasswd模块
+    # smbpasswd
+
+    #使用ldap模块从ldap数据库读取密码进行认证
+    # ldap
+
+    #进行每日登陆时长限制.
+    # daily
+
+    #过期处理和登陆时长处理模块,应该在模块实例化段中初始化以注册功能函数
+    expiration
+    logintime
+
+    #所有其它模块都不对请求负责时配置属性:Auth-Type = PAP,且其它模块和过
+    #程应该添加"known-good"密码到请求中且不进行其它操作,PAP将利用该密码
+    #进行对比检查,该模块应该放在最后以便其它模块有机会处理所其期望的请求.
+    pap
+
+    #在"status_server=yes"时"Status-Server"消息被传递且仅传递到下列段中
+    #以允许进行数据库查询等处理,此处模块返回"fail"将使得请求响应被取消
+    # Autz-Type Status-Server { }
+}
+
+
+#========== 身份认证 ==========#
+#本段列出可用于身份验证的模块.这并不意味着"按顺序尝试每个模块","authorize"
+#部分中的模块添加了一个配置属性"auth-type：=foo"来指示将使用的身份验证类型
+#以便从下面的列表中选择适当的模块进行认证。
+#一般来说服务器会确定一个合适的身份验证类型(Auth-Type属性).错误的设置该
+#属性会导致一些问题,如某个模块工作其它则不然.手动设置属性常见的有:
+#强制拒绝: Auth-Type:=Reject;强制通过: Auth-Type:=Accept(无法工作于PAP模块)
+#不要在"authenticate"段使用"unlang",但可用在"post-auth"段("post-auth"的意义)
+authenticate {
+    #PAP认证: 授权部分的模块提供了加密或明文密码时使用
+    Auth-Type PAP { 
+        pap
+    }
+
+    #CHAP认证: 要求授权部分的模块提供明文密码
+    Auth-Type CHAP {
+        chap
+    }
+
+    #CHAP认证: 要求授权部分的模块提供明文密码
+    Auth-Type MS-CHAP {
+        mschap
+    }
+ 
+    #For old names, too.
+    mschap
+
+    #同'authorize'段
+    # digest
+
+    #插件认证模块.
+    # pam
+    
+    #使用LDAP执行验证,这表示要在ldap查询纯文本密码,不支持EAP
+    #LDAP本质上是数据库而非认证服务器,不被建议使用.
+    # Auth-Type LDAP { ldap }
+
+    #EAP认证,EAP通道内的具体请求将使用"inner-tunnel"虚拟服务器进行认证
+    eap
+    
+    #过滤早期配置在Access-Challenge包中发送的严格来讲不正确的属性
+    #   Auth-Type eap {
+    #       eap { handled = 1 }
+    #       if (handled && (Response-Packet-Type == Access-Challenge)) {
+    #           attr_filter.access_challenge.post-auth
+    #           handled  # override the "updated" code from attr_filter }
+    #      }
+    #  
+}
+
+
+#========== 记账配置: 记账方案 ==========#
+#记账方案: 确定将使用的记账类型
+preacct {
+    preprocess
+    
+    #合并Acct-[Input|Output]-Gigawords和Acct-[Input-Output]-Octets属性
+    #到一个64位计数属性 Acct-[Input|Output]-Octets64中.
+    # acct_counters64
+
+    #会话开始时间隐含在radius认证中,NAS从不发送"start-time",但可能发送
+    #Acct-Delay-Time属性,服务器应能以此和会话延时计算出记账开始时间.
+    #下面代码计算了一个显式的记账启动时间,可以正确的用在大多数模块中.
+    #   update request {
+    #       FreeRADIUS-Acct-Session-Start-Time = \
+    #           "%{expr: %l - %{%{Acct-Session-Time}:-0} - \
+    #            %{%{Acct-Delay-Time}:-0}}"
+    #   }
+
+    #保证每个记账请求都有一个唯一的ID: acctuniqueid
+    acct_unique
+
+    #查找"realm/"和"@realm"以决定是否进行代理,记账代理通常和认证代理相同
+    # IPASS
+    suffix
+    # ntdomain
+
+    #读取"acct_users"文件
+    files
+}
+
+
+#========== 记账配置: 记账日志 ==========#
+accounting {
+    #当nas不支持cui时通过从相应访问记录添加cui属性来更新记帐包
+    # cui
+
+    #添加详细记账包日志(代理的包也会被记录)
+    #detail
+    # daily
+
+    #记账到wtmp格式文件,即"radlast"
+    # unix
+
+    #并发用户跟踪
+    # radutmp
+    # sradutmp
+
+    #收到停止记录时返还可能的IP地址到地址池.
+    # main_pool
+
+    #记账到sql数据库
+    sql
+
+    #零会话长度的停止数据包不会记录在数据库中且SQL模块将返回"noop"
+    #且服务器不会响应该请求,以下三行以忽略这些数据包,NAS将重新传输.
+    #   if (noop) {
+    #       ok
+    #   }
+
+    #不发送查询到SQL服务器,而是将其写入日志文件。
+    # sql_log
+
+    #Cisco VoIP专用记账模块
+    # pgsql-voip
+
+    #执行外部程序
+    # exec
+
+    #记账响应属性过滤
+    attr_filter.accounting_response
+
+    #参考"Autz-Type Status-Server"
+    #   Acct-Type Status-Server { }
+}
+
+
+#会话: 并发数查询,radutmp和sql模块可以处理查询,sql模块速度较快
+session {
+    # radutmp
+    sql
+}
+
+
+#认证后处理,认证完成后可执行一些其它的必要操作
+post-auth {
+    #添加状态属性,如COA请求的s=State和Service-Type = Authorize-Only
+    #   if (!&reply:State) {update reply { State := "0x%{randstr:16h}" }}
+
+    #在EAP-TTLS和PEAP中,"session-state"会被自动缓存用于后继操作
+    #可以在被发送回复后自动删除它
+    update { &reply: += &session-state: }
+
+    #从IP池中获取地址
+    # main_pool
+
+    #创建Cui值并将属性添加到Access-Acception中
+    # cui
+
+    #启用详细回复日志
+    # reply_log
+
+    #执行SQL记录认证日志
+    sql
+
+    #不将查询发送到SQL服务器,而是将其写入日志文件
+    # sql_log
+
+    #在LDAP中修改用户对象
+    # ldap
+
+    #执行程序进行额外处理
+    # exec
+
+    #计算各种WiMAX-KEYS,为使其工作可以使用下列代码定义 WiMAX NAI
+    #   update request { WiMAX-MN-NAI = "%{User-Name}" }
+    #
+    #添加和计算各种密钥
+    #   update reply {
+    #       WiMAX-FA-RK-Key = 0x00
+    #       WiMAX-MSK = "%{EAP-MSK}"
+    #   }
+    #参考"modules/wimax"配置"delete_mppe_keys"以删除MPPE-KEYS
+    # wimax
+
+
+    #填充颁发机构和客户端证书相关属性
+    #   update reply {
+    #          Reply-Message += "%{TLS-Cert-Serial}"
+    #          Reply-Message += "%{TLS-Cert-Expiration}"
+    #          Reply-Message += "%{TLS-Cert-Subject}"
+    #          Reply-Message += "%{TLS-Cert-Issuer}"
+    #          Reply-Message += "%{TLS-Cert-Common-Name}"
+    #          Reply-Message += "%{TLS-Cert-Subject-Alt-Name-Email}"
+    #
+    #          Reply-Message += "%{TLS-Client-Cert-Serial}"
+    #          Reply-Message += "%{TLS-Client-Cert-Expiration}"
+    #          Reply-Message += "%{TLS-Client-Cert-Subject}"
+    #          Reply-Message += "%{TLS-Client-Cert-Issuer}"
+    #          Reply-Message += "%{TLS-Client-Cert-Common-Name}"
+    #          Reply-Message += "%{TLS-Client-Cert-Subject-Alt-Name-Email}"
+    #   }
+
+    #将类属性(具有唯一值)插入到响应中,辅助匹配auth和acct记录,并防止
+    #acct-sessionid重复.只有当nas为实现了rfc 2865类属性且nas支持长类属性时
+    #才正常工作,许多早期的nases只支持16字节类属性。
+    # insert_acct_class
+
+    #Macsec需要使用EAP-Key-Name,但是我们不想为所有EAP会话发送它
+    #因此EAP模块将所需的数据放入EAP-Session-Id属性,该属性永远不会
+    #放入请求或回复数据包中,下面操作复制这些数据到回复包中
+    #   if (&reply:EAP-Session-Id) {
+    #       update reply {
+    #           EAP-Key-Name := &reply:EAP-Session-Id
+    #       }
+    #   }
+
+    #响应中包含EAP-Message时删除回复消息
+    remove_reply_message_if_eap
+
+    #Access-Reject包传递到post-auth子段REJECT
+    #此处的"session-state"属性是无效的
+    Post-Auth-Type REJECT {
+        #日志认证失败到sql
+        sql
+        attr_filter.access_reject
+
+        #请求因策略失败被拒绝时插入EAP-Failure消息为认证失败
+        eap
+
+        #如果响应包含EAP-Message则删除回复消息。
+        remove_reply_message_if_eap
+    }
+
+    #过滤握手挑战访问
+    Post-Auth-Type Challenge {
+        # remove_reply_message_if_eap
+        # attr_filter.access_challenge.post-auth
+    }
+}
+
+
+#对代理的请求需要先进行预处理,目前只有少数模块有此方法
+pre-proxy {
+    # Before proxing the request add an Operator-Name attribute identifying
+    # if the operator-name is found for this client.
+    # No need to uncomment this if you have already enabled this in
+    # the authorize section.
+#   operator-name
+
+    #  The client requests the CUI by sending a CUI attribute
+    #  containing one zero byte.
+    #  Uncomment the line below if *requesting* the CUI.
+#   cui
+
+    #  Uncomment the following line if you want to change attributes
+    #  as defined in the preproxy_users file.
+#   files
+
+    #  Uncomment the following line if you want to filter requests
+    #  sent to remote servers based on the rules defined in the
+    #  'attrs.pre-proxy' file.
+#   attr_filter.pre-proxy
+
+    #  If you want to have a log of packets proxied to a home
+    #  server, un-comment the following line, and the
+    #  'detail pre_proxy_log' section, above.
+#   pre_proxy_log
+}
+
+
+#对代理返回的响应进行代理后处理
+post-proxy {
+
+    #  If you want to have a log of replies from a home server,
+    #  un-comment the following line, and the 'detail post_proxy_log'
+    #  section, above.
+#   post_proxy_log
+
+    #  Uncomment the following line if you want to filter replies from
+    #  remote proxies based on the rules defined in the 'attrs' file.
+#   attr_filter.post-proxy
+
+    #
+    #  If you are proxying LEAP, you MUST configure the EAP
+    #  module, and you MUST list it here, in the post-proxy
+    #  stage.
+    #
+    #  You MUST also use the 'nostrip' option in the 'realm'
+    #  configuration.  Otherwise, the User-Name attribute
+    #  in the proxied request will not match the user name
+    #  hidden inside of the EAP packet, and the end server will
+    #  reject the EAP request.
+    #
+    eap
+
+    #
+    #  If the server tries to proxy a request and fails, then the
+    #  request is processed through the modules in this section.
+    #
+    #  The main use of this section is to permit robust proxying
+    #  of accounting packets.  The server can be configured to
+    #  proxy accounting packets as part of normal processing.
+    #  Then, if the home server goes down, accounting packets can
+    #  be logged to a local "detail" file, for processing with
+    #  radrelay.  When the home server comes back up, radrelay
+    #  will read the detail file, and send the packets to the
+    #  home server.
+    #
+    #  With this configuration, the server always responds to
+    #  Accounting-Requests from the NAS, but only writes
+    #  accounting packets to disk if the home server is down.
+    #
+#   Post-Proxy-Type Fail-Accounting {
+#           detail
+#   }
+}
+}

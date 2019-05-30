@@ -1,0 +1,80 @@
+
+#授权配置文件,本文件由files模块用于为请求提供密码和回复参数
+#格式: 无缩进行第一字段匹配用户名,其它字段的属性赋值为认证要求列表
+#格式: 第一行后面的"缩进行"用于提供回复属性
+#格式: "DEFAULT"用户可匹配任意用户名
+#设置Fall-Through属性为"yes"时会在首次匹配命中后继续后面的匹配检查
+#多组匹配时注意属性赋值方式以保证期望的授权效果
+#未能匹配所有列表中用户名的请求都将被驳回.
+
+
+
+steve   Cleartext-Password := "panpan123"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-IP-Address = 172.16.3.33,
+    Framed-IP-Netmask = 255.255.255.0,
+    Framed-Routing = Broadcast-Listen,
+    Framed-Filter-Id = "std.ppp",
+    Framed-MTU = 1500,
+    Framed-Compression = Van-Jacobsen-TCP-IP
+
+
+bob Cleartext-Password := "panpan123"
+    Reply-Message := "Hello, %{User-Name}"
+
+
+
+#驳回所有用被禁用的用户
+#DEFAULT    Group == "disabled", Auth-Type := Reject
+#       Reply-Message = "Your account has been disabled."
+
+#回拨用户示例
+#Deg    Cleartext-Password := "ge55ged"
+#   Service-Type = Callback-Login-User,
+#   Login-IP-Host = 0.0.0.0,
+#   Callback-Number = "9,5551212",
+#   Login-Service = Telnet,
+#   Login-TCP-Port = Telnet
+
+#dialbk Cleartext-Password := "callme"
+#   Service-Type = Callback-Login-User,
+#   Login-IP-Host = timeshare1,
+#   Login-Service = PortMaster,
+#   Callback-Number = "9,1-800-555-1212"
+
+#条件地对目标用户仅分配IP地址
+#swilson    Service-Type == Framed-User, Huntgroup-Name == "alphen"
+#       Framed-IP-Address = 192.0.2.65,
+#       Fall-Through = Yes
+
+
+#对*.shell用户名的登陆授权shell登陆
+#DEFAULT    Suffix == ".shell"
+#       Service-Type = Login-User,
+#       Login-Service = Telnet,
+#       Login-IP-Host = your.shell.machine
+
+#从地址池为用户分配IP,分配从基本地址开始递加
+#DEFAULT    Service-Type == Framed-User, Huntgroup-Name == "alphen"
+#       Framed-IP-Address = 192.0.2.32+,
+#       Fall-Through = Yes
+
+#DEFAULT    Service-Type == Framed-User, Huntgroup-Name == "delft"
+#       Framed-IP-Address = 198.51.100.32+,
+#       Fall-Through = Yes
+
+
+#DEFAULT    Service-Type == Framed-User
+#   Framed-IP-Address = 255.255.255.254,
+#   Framed-MTU = 576,
+#   Service-Type = Framed-User,
+#   Fall-Through = Yes
+
+
+#为PPP认证配置连接选项
+#DEFAULT Framed-Protocol == PPP
+#    Framed-Protocol = PPP,
+#    Framed-Compression = Van-Jacobson-TCP-IP
+
+
